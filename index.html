@@ -7,7 +7,6 @@
     
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.11.0/math.min.js"></script>
-    <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="https://unpkg.com/mathlive"></script>
 
@@ -674,10 +673,6 @@
             </div>
         </div>
 
-        <div class="control-group" style="margin-top: 20px;">
-            <label style="color: #2e7d32;">Gemini API Key (Explicaciones IA)</label>
-            <input type="password" id="api-key" value="AIzaSyCC5H4EvKDC_hC5V_Xt-zfBLYL_GmC3E20" readonly style="width: 100%; padding: 12px; border: 1px solid #ddd; background: #f1f8e9; border-radius: 8px; font-size: 0.9rem; font-family: monospace;">
-        </div>
 
         <button class="btn btn-run" onclick="calcular()" id="calc-btn">
             <span id="calc-text">Calcular y Analizar</span>
@@ -728,7 +723,7 @@
         <div class="card">
             <div class="card-header">
                 <h3>Desarrollo Matemático Completo</h3>
-                <small style="color: #666;">Solución Paso a Paso con Explicaciones IA</small>
+                <small style="color: #666;">Solución Paso a Paso</small>
             </div>
             <div id="lista-pasos">
                 <div style="text-align: center; padding: 50px 20px;">
@@ -736,7 +731,7 @@
                     <h3 style="color: #999; margin-bottom: 15px;">Listo para Analizar</h3>
                     <p style="color: #aaa; max-width: 500px; margin: 0 auto;">
                         Presione "Calcular y Analizar" para ver el desarrollo matemático completo, 
-                        visualizaciones interactivas y explicaciones generadas por IA.
+                        visualizaciones interactivas y desarrollo matemático local.
                     </p>
                 </div>
             </div>
@@ -745,9 +740,7 @@
 </div>
 
 <script>
-// Constantes y configuraciones
-const GEMINI_API_KEY = "AIzaSyCC5H4EvKDC_hC5V_Xt-zfBLYL_GmC3E20";
-const API_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`;
+// El desarrollo matemático se genera localmente, sin credenciales ni API externa.
 
 // Presets mejorados con más información
 const presets = {
@@ -762,9 +755,9 @@ const presets = {
     'esfera-cono': { 
         s: '\\sqrt{16-x^2-y^2}', 
         i: '\\sqrt{x^2+y^2}', 
-        x1: '-2.828', x2: '2.828', 
+        x1: '-sqrt(8)', x2: 'sqrt(8)', 
         y1: '-\\sqrt{8-x^2}', y2: '\\sqrt{8-x^2}', 
-        exacto: (32*Math.PI/3)*(2-Math.sqrt(2)),
+        exacto: (64*Math.PI/3)*(2-Math.sqrt(2)),
         desc: 'Esfera de radio 4 intersectada por un cono de 45°'
     },
     'cilindro-plano': { 
@@ -833,7 +826,7 @@ function evaluar(expr, scope) {
         // Preparar scope con funciones matemáticas
         const fullScope = {
             ...scope,
-            sqrt: Math.sqrt,
+            sqrt: value => value >= -1e-12 ? Math.sqrt(Math.max(0, value)) : NaN,
             sin: Math.sin,
             cos: Math.cos,
             tan: Math.tan,
@@ -854,7 +847,7 @@ function evaluar(expr, scope) {
         }
         
         // Verificar que sea un número finito válido
-        return isFinite(res) && !isNaN(res) ? res : null;
+        return typeof res === 'number' && Number.isFinite(res) ? res : null;
     } catch (error) {
         console.warn('Error evaluando expresión:', error);
         return null;
@@ -934,8 +927,8 @@ function validarInputs() {
         const xMin = math.evaluate(cleanLatex(document.getElementById('x-min').value));
         const xMax = math.evaluate(cleanLatex(document.getElementById('x-max').value));
         
-        if (xMin >= xMax) {
-            errores.push('x-min debe ser menor que x-max');
+        if (!Number.isFinite(xMin) || !Number.isFinite(xMax) || xMin >= xMax) {
+            errores.push('Los límites de x deben ser números reales finitos y x-min menor que x-max');
         }
     } catch (e) {
         errores.push('Error en los límites de x');
@@ -1020,7 +1013,8 @@ function integrarMejorado(fS, fI, xMin, xMax, yMinStr, yMaxStr) {
         const y1 = evaluar(yMinC, { x });
         const y2 = evaluar(yMaxC, { x });
         
-        if (y1 === null || y2 === null || y1 >= y2) continue;
+        if (y1 === null || y2 === null || y1 > y2) throw new Error('Límites de y inválidos dentro de la región');
+        if (y1 === y2) continue;
         
         const dy = (y2 - y1) / N;
         
@@ -1038,12 +1032,10 @@ function integrarMejorado(fS, fI, xMin, xMax, yMinStr, yMaxStr) {
             const zS = evaluar(fS, { x, y });
             const zI = evaluar(fI, { x, y });
             
-            if (zS !== null && zI !== null) {
-                const h = zS - zI;
-                if (h > 0) {
-                    sumY += coeff * h;
-                }
-            }
+            if (zS === null || zI === null) throw new Error('Superficie no definida en la región');
+            const h = zS - zI;
+            if (h < -1e-9) throw new Error('La superficie superior queda debajo de la inferior');
+            sumY += coeff * Math.max(0, h);
         }
         
         const integralY = (sumY * dy) / 3;
@@ -1062,7 +1054,10 @@ function mostrarResultados(volumen, x1L, x2L) {
     const exactoElem = document.getElementById('val-exacto');
     const errorElem = document.getElementById('error-rel');
     
-    if (presets[sel] && presets[sel].exacto !== null) {
+    const keys = ['s','i','x1','x2','y1','y2'];
+    const fields = ['f-sup','f-inf','x-min','x-max','y-min','y-max'];
+    const coincide = presets[sel] && fields.every((id, i) => cleanLatex(document.getElementById(id).value).replace(/\s/g, '') === cleanLatex(presets[sel][keys[i]]).replace(/\s/g, ''));
+    if (coincide && presets[sel].exacto !== null) {
         const exacto = presets[sel].exacto;
         exactoElem.innerText = exacto.toFixed(6) + " u³";
         const error = Math.abs((volumen - exacto) / exacto * 100);
@@ -1300,42 +1295,14 @@ async function graficar2D(fS, fI, xMin, xMax, yMinExpr, yMaxExpr) {
     });
 }
 
-// Función para llamar a la API de Gemini
-async function llamarGemini(prompt) {
-    try {
-        const response = await fetch(API_ENDPOINT, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{
-                        text: prompt + " (Responde en español, máximo 150 palabras)"
-                    }]
-                }],
-                generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 200,
-                }
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        return data.candidates[0].content.parts[0].text;
-    } catch (error) {
-        console.error('Error llamando a Gemini:', error);
-        return "Explicación no disponible en este momento. Revisa la configuración de la API.";
-    }
-}
-
 // Generar desarrollo matemático completo
 async function generarDesarrolloCompleto(fS, fI, x1, x2, y1, y2, vol) {
     const container = document.getElementById('lista-pasos');
     container.innerHTML = '<div class="loading" style="margin: 50px auto;"></div>';
     
+    // Escapar entradas antes de incorporarlas al HTML.
+    const escapar = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    [fS,fI,x1,x2,y1,y2] = [fS,fI,x1,x2,y1,y2].map(escapar);
     // Definir los pasos
     const pasos = [
         {
@@ -1402,15 +1369,15 @@ async function generarDesarrolloCompleto(fS, fI, x1, x2, y1, y2, vol) {
             num: 5,
             titulo: "Método de Resolución Numérica",
             contenido: `
-                <p>Se emplea el método de Simpson compuesto 2D con una malla de 200×200 puntos:</p>
+                <p>Se emplea el método de punto medio en x y Simpson compuesto en y, con 200 subintervalos por dirección:</p>
                 <div class="formula-box">
-                    $$V \\approx \\sum_{i=1}^{200} \\sum_{j=1}^{200} h(x_i^*, y_j^*) \\, \\Delta x \\, \\Delta y$$
+                    La integral interior usa los pesos de Simpson 1, 4, 2, …, 4, 1; la exterior suma los valores en los puntos medios multiplicados por Δx.
                 </div>
                 <p>Parámetros del cálculo:</p>
                 <ul>
-                    <li>Puntos de evaluación: 40,000</li>
-                    <li>Precisión estimada: ε < 10⁻⁴</li>
-                    <li>Validación: h(x,y) > 0 en toda la región</li>
+                    <li>Puntos de evaluación: 40,200</li>
+                    <li>Precisión: depende de las funciones y la discretización</li>
+                    <li>Validación: h(x,y) ≥ 0 en los puntos evaluados</li>
                 </ul>
             `,
             prompt: `¿Por qué el método de Simpson es más preciso que Riemann para integración numérica?`
@@ -1426,8 +1393,8 @@ async function generarDesarrolloCompleto(fS, fI, x1, x2, y1, y2, vol) {
                 <p>Validación del resultado:</p>
                 <ul>
                     <li><b>Consistencia:</b> Método verificado con casos de prueba</li>
-                    <li><b>Precisión:</b> Error relativo estimado < 0.01%</li>
-                    <li><b>Estabilidad:</b> Resultado convergente al aumentar puntos</li>
+                    <li><b>Precisión:</b> Comparar con el valor exacto cuando esté disponible</li>
+                    <li><b>Estabilidad:</b> Comprobar convergencia al refinar la malla</li>
                 </ul>
             `,
             prompt: `¿Cómo se valida la precisión de un método numérico de integración?`
@@ -1444,7 +1411,7 @@ async function generarDesarrolloCompleto(fS, fI, x1, x2, y1, y2, vol) {
                     <li>Análisis estructural de piezas complejas</li>
                     <li>Modelado topográfico y geológico</li>
                 </ul>
-                <p><b>Conclusión:</b> El volumen de <b>${vol.toFixed(6)} u³</b> es confiable para aplicaciones prácticas.</p>
+                <p><b>Conclusión:</b> El volumen de <b>${vol.toFixed(6)} u³</b> es una aproximación numérica que requiere validación.</p>
             `,
             prompt: `Menciona aplicaciones prácticas del cálculo de volúmenes mediante integrales dobles en ingeniería.`
         }
@@ -1457,59 +1424,24 @@ async function generarDesarrolloCompleto(fS, fI, x1, x2, y1, y2, vol) {
         <div class="step">
             <h4>Paso ${paso.num}: ${paso.titulo}</h4>
             ${paso.contenido}
-            <div id="ai-${paso.num}" class="ai-box">
-                <div class="ai-title">Explicación Complementaria IA</div>
-                <div class="ai-content">Cargando explicación...</div>
-            </div>
         </div>`;
     }
     
     container.innerHTML = html;
     
     // Renderizar MathJax
-    if (typeof MathJax !== 'undefined') {
-        MathJax.typesetPromise([container]).catch(console.error);
+    if (window.MathJax?.startup?.promise) {
+        await MathJax.startup.promise;
+        await MathJax.typesetPromise([container]);
     }
     
-    // Llamar a Gemini para cada paso (con delay para no sobrecargar)
-    for (const paso of pasos) {
-        try {
-            const aiBox = document.getElementById(`ai-${paso.num}`);
-            const aiContent = aiBox.querySelector('.ai-content');
-            
-            // Pequeño delay entre llamadas
-            await new Promise(resolve => setTimeout(resolve, 500));
-            
-            const explicacion = await llamarGemini(paso.prompt);
-            aiContent.textContent = explicacion;
-            aiBox.classList.add('show');
-            
-        } catch (error) {
-            console.error(`Error en paso ${paso.num}:`, error);
-            const aiBox = document.getElementById(`ai-${paso.num}`);
-            const aiContent = aiBox.querySelector('.ai-content');
-            aiContent.textContent = "Explicación temporalmente no disponible.";
-            aiBox.classList.add('show');
-        }
-    }
+
 }
 
 // Inicializar al cargar la página
 window.addEventListener('DOMContentLoaded', () => {
     // Cargar preset inicial
     cargarPredefinido();
-    
-    // Configurar MathJax
-    if (typeof MathJax !== 'undefined') {
-        MathJax.Hub.Config({
-            tex2jax: {
-                inlineMath: [['$', '$'], ['\\(', '\\)']],
-                displayMath: [['$$', '$$'], ['\\[', '\\]']],
-                processEscapes: true
-            },
-            messageStyle: 'none'
-        });
-    }
     
     // Añadir tooltips a los inputs
     const tooltips = {
